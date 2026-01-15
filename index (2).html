@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Landen's Bizarre Maze</title>
+    <style>
+        /* Modern-Retro Atari Aesthetic */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            border: 4px solid #0f0;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated; /* Keeps the retro blocky look */
+            background-color: #000;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            text-shadow: 4px 4px #f00;
+            text-align: center;
+            white-space: pre-wrap;
+        }
+
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.5rem;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        button:hover {
+            transform: scale(1.1);
+            background: #fff;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui-layer">
+            <h1 id="ui-title">LANDEN'S BIZARRE MAZE</h1>
+            <button id="start-btn">START GAME</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * LANDEN'S BIZARRE MAZE
+         * A procedurally generated retro horror-survival game.
+         */
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const uiTitle = document.getElementById('ui-title');
+        const startBtn = document.getElementById('start-btn');
+
+        // Game Constants
+        const TILE_SIZE = 40; 
+        const VISIBLE_WIDTH = 12; 
+        const VISIBLE_HEIGHT = 9; 
+        const FOG_RADIUS = 120; 
+        
+        let gameState = 'START'; 
+        let keys = {};
+        let gracePeriodTimer = 0;
+        let lastTime = 0; // For DeltaTime tracking
+        
+        // World Definition
+        const world = {
+            width: 41,
+            height: 41, 
+            walls: [],
+            fakeWalls: [], 
+            exit: {x: 0, y: 0},
+            secret: {x: 1, y: -2, collected: false},
+            outOfBoundsTiles: [] 
+        };
+
+        const player = {
+            x: 0,
+            y: 0,
+            speed: 192, // Pixels per second (Approx 3.2 * 60)
+            color: '#00f', 
+            radius: 10,
+            hasSecret: false
+        };
+
+        const monster = {
+            x: 0,
+            y: 0,
+            speed: 168, // Pixels per second (Approx 2.8 * 60)
+            color: '#f00',
+            radius: 12,
+            path: [],
+            lastTargetTile: {x: -1, y: -1}
+        };
+
+        const camera = {
+            x: 0,
+            y: 0
+        };
+
+        function init() {
+            canvas.width = VISIBLE_WIDTH * TILE_SIZE;
+            canvas.height = VISIBLE_HEIGHT * TILE_SIZE;
+            generateMaze();
+        }
+
+        function generateMaze() {
+            world.walls = [];
+            world.fakeWalls = [];
+            world.secret.collected = false;
+            player.color = '#00f';
+            player.hasSecret = false;
+
+            for (let y = 0; y < world.height; y++) {
+                world.walls[y] = new Array(world.width).fill(true);
+            }
+
+            for (let y = 1; y < 7; y++) {
+                for (let x = 1; x < 6; x++) {
+                    world.walls[y][x] = false;
+                }
+            }
+
+            world.outOfBoundsTiles = [
+                {x: 1, y: -1, wall: false},  
+                {x: 1, y: -2, wall: false, hasSecret: true}, 
+                {x: 0, y: -1, wall: true},
+                {x: 0, y: -2, wall: true},
+                {x: 2, y: -1, wall: true},
+                {x: 2, y: -2, wall: true},
+                {x: 1, y: -3, wall: true}
+            ];
+            
+            world.walls[0][1] = true; 
+            world.fakeWalls.push({x: 1, y: 0});
+
+            const stack = [{x: 5, y: 3}];
+            world.walls[3][5] = false;
+
+            while (stack.length > 0) {
+                const curr = stack[stack.length - 1];
+                const dirs = [{x:0, y:-2}, {x:0, y:2}, {x:-2, y:0}, {x:2, y:0}].sort(() => Math.random() - 0.5);
+                let found = false;
+
+                for (let d of dirs) {
+                    const nx = curr.x + d.x, ny = curr.y + d.y;
+                    if (nx > 0 && nx < world.width-1 && ny > 0 && ny < world.height-1 && world.walls[ny][nx]) {
+                        world.walls[curr.y + d.y/2][curr.x + d.x/2] = false;
+                        world.walls[ny][nx] = false;
+                        stack.push({x: nx, y: ny});
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) stack.pop();
+            }
+
+            for (let i = 0; i < 100; i++) {
+                const rx = Math.floor(Math.random() * (world.width - 2)) + 1;
+                const ry = Math.floor(Math.random() * (world.height - 2)) + 1;
+                if (world.walls[ry][rx]) {
+                    const h = !world.walls[ry][rx-1] && !world.walls[ry][rx+1];
+                    const v = !world.walls[ry-1][rx] && !world.walls[ry+1][rx];
+                    if (h || v) world.walls[ry][rx] = false;
+                }
+            }
+
+            let exitFound = false;
+            const startX = 3, startY = 4;
+            const minDistance = 25; 
+
+            while (!exitFound) {
+                const ex = Math.floor(Math.random() * (world.width - 2)) + 1;
+                const ey = Math.floor(Math.random() * (world.height - 2)) + 1;
+                
+                if (!world.walls[ey][ex] && (Math.abs(ex - startX) + Math.abs(ey - startY)) > minDistance) {
+                    world.exit = {x: ex, y: ey};
+                    exitFound = true;
+                }
+            }
+        }
+
+        function getPath(startX, startY, endX, endY) {
+            if (startY < 0 || endY < 0) return []; 
+            const queue = [[{x: startX, y: startY}]];
+            const visited = new Set([`${startX},${startY}`]);
+            
+            while (queue.length > 0) {
+                const path = queue.shift();
+                const curr = path[path.length - 1];
+                if (curr.x === endX && curr.y === endY) return path;
+
+                const dirs = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
+                for (let d of dirs) {
+                    const nx = curr.x + d.x, ny = curr.y + d.y;
+                    if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height && !world.walls[ny][nx] && !visited.has(`${nx},${ny}`)) {
+                        visited.add(`${nx},${ny}`);
+                        queue.push([...path, {x: nx, y: ny}]);
+                    }
+                }
+            }
+            return [];
+        }
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        startBtn.addEventListener('click', () => {
+            uiLayer.classList.add('hidden');
+            generateMaze();
+            player.x = TILE_SIZE * 3.5;
+            player.y = TILE_SIZE * 4.5;
+            monster.x = TILE_SIZE * 3.5;
+            monster.y = TILE_SIZE * 2.5;
+            monster.path = [];
+            gracePeriodTimer = 3.0; // 3 seconds
+            gameState = 'PLAYING';
+            lastTime = performance.now(); // Reset timer on start
+        });
+
+        function checkCollision(nx, ny, radius, isMonster = false) {
+            const res = 8;
+            for (let i = 0; i < res; i++) {
+                const angle = (i / res) * Math.PI * 2;
+                const px = nx + Math.cos(angle) * radius;
+                const py = ny + Math.sin(angle) * radius;
+                const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE);
+                
+                if (ty < 0) {
+                    if (isMonster) return true;
+                    const oob = world.outOfBoundsTiles.find(t => t.x === tx && t.y === ty);
+                    if (!oob || oob.wall) return true;
+                    continue;
+                }
+
+                if (tx < 0 || tx >= world.width || ty >= world.height) return true;
+                
+                if (world.walls[ty][tx]) {
+                    if (!isMonster && world.fakeWalls.some(fw => fw.x === tx && fw.y === ty)) continue;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function update(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            // Player Movement using DeltaTime
+            let pdx = 0, pdy = 0;
+            if (keys['ArrowUp'] || keys['KeyW']) pdy -= player.speed * dt;
+            if (keys['ArrowDown'] || keys['KeyS']) pdy += player.speed * dt;
+            if (keys['ArrowLeft'] || keys['KeyA']) pdx -= player.speed * dt;
+            if (keys['ArrowRight'] || keys['KeyD']) pdx += player.speed * dt;
+
+            // Diagonal speed normalization
+            if (pdx !== 0 && pdy !== 0) {
+                pdx *= 0.7071;
+                pdy *= 0.7071;
+            }
+
+            if (!checkCollision(player.x + pdx, player.y, player.radius)) player.x += pdx;
+            if (!checkCollision(player.x, player.y + pdy, player.radius)) player.y += pdy;
+
+            // Monster Logic using DeltaTime
+            if (gracePeriodTimer > 0) {
+                gracePeriodTimer -= dt;
+            } else {
+                const pTileX = Math.floor(player.x / TILE_SIZE);
+                const pTileY = Math.floor(player.y / TILE_SIZE);
+                const mTileX = Math.floor(monster.x / TILE_SIZE);
+                const mTileY = Math.floor(monster.y / TILE_SIZE);
+
+                if (pTileY >= 0) {
+                    if (monster.path.length === 0 || monster.lastTargetTile.x !== pTileX || monster.lastTargetTile.y !== pTileY) {
+                        monster.path = getPath(mTileX, mTileY, pTileX, pTileY);
+                        monster.lastTargetTile = {x: pTileX, y: pTileY};
+                    }
+
+                    if (monster.path.length > 1) {
+                        const next = monster.path[1];
+                        const targetX = (next.x + 0.5) * TILE_SIZE;
+                        const targetY = (next.y + 0.5) * TILE_SIZE;
+                        const angle = Math.atan2(targetY - monster.y, targetX - monster.x);
+                        
+                        monster.x += Math.cos(angle) * monster.speed * dt;
+                        monster.y += Math.sin(angle) * monster.speed * dt;
+                        
+                        if (Math.hypot(targetX - monster.x, targetY - monster.y) < 5) monster.path.shift();
+                    }
+                }
+
+                if (Math.hypot(monster.x - player.x, monster.y - player.y) < 20) {
+                    gameState = 'LOST';
+                    uiTitle.innerText = "YOU WERE CAUGHT!";
+                    startBtn.innerText = "TRY AGAIN";
+                    uiLayer.classList.remove('hidden');
+                }
+            }
+
+            const tx = Math.floor(player.x / TILE_SIZE);
+            const ty = Math.floor(player.y / TILE_SIZE);
+            
+            if (!world.secret.collected) {
+                const secretTile = world.outOfBoundsTiles.find(t => t.hasSecret);
+                if (tx === secretTile.x && ty === secretTile.y) {
+                    world.secret.collected = true;
+                    player.hasSecret = true;
+                    player.color = '#f0f'; 
+                }
+            }
+
+            if (tx === world.exit.x && ty === world.exit.y) {
+                gameState = 'WON';
+                uiTitle.innerText = player.hasSecret ? "YOU ESCAPED!\n(A+ CERTIFIED)" : "YOU ESCAPED!";
+                startBtn.innerText = "PLAY AGAIN";
+                uiLayer.classList.remove('hidden');
+            }
+
+            camera.x = player.x - canvas.width / 2;
+            camera.y = player.y - canvas.height / 2;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const pTileY = Math.floor(player.y / TILE_SIZE);
+            const isInsideSecretCorridor = pTileY < 0;
+
+            ctx.save();
+            ctx.translate(-camera.x, -camera.y);
+
+            for (let y = 0; y < world.height; y++) {
+                for (let x = 0; x < world.width; x++) {
+                    if (world.walls[y][x]) {
+                        const isEntrance = world.fakeWalls.some(fw => fw.x === x && fw.y === y);
+                        ctx.fillStyle = isEntrance ? '#00cc00' : '#00ff00'; 
+                        ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    }
+                }
+            }
+
+            if (isInsideSecretCorridor) {
+                world.outOfBoundsTiles.forEach(t => {
+                    if (t.wall) {
+                        ctx.fillStyle = '#00ff00';
+                        ctx.fillRect(t.x * TILE_SIZE + 2, t.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                    } else if (t.hasSecret && !world.secret.collected) {
+                        ctx.fillStyle = '#fff';
+                        ctx.font = '24px Arial';
+                        ctx.fillText('📄', t.x * TILE_SIZE + 8, t.y * TILE_SIZE + 30);
+                    }
+                });
+            }
+
+            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : '#0f0';
+            ctx.fillRect(world.exit.x * TILE_SIZE + 5, world.exit.y * TILE_SIZE + 5, TILE_SIZE - 10, TILE_SIZE - 10);
+
+            ctx.fillStyle = monster.color;
+            ctx.fillRect(monster.x - 12, monster.y - 12, 24, 24);
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
+
+            ctx.restore();
+
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+            ctx.globalCompositeOperation = 'destination-in';
+            const grad = ctx.createRadialGradient(cx, cy, FOG_RADIUS * 0.2, cx, cy, FOG_RADIUS);
+            grad.addColorStop(0, 'rgba(0,0,0,1)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(cx, cy, FOG_RADIUS, 0, Math.PI*2); ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // Implementation of the suggested deltaTime loop
+        function gameLoop(time) {
+            const deltaTime = (time - lastTime) / 1000; 
+            lastTime = time;
+
+            // Cap deltaTime to avoid huge jumps if user switches tabs
+            const cappedDt = Math.min(deltaTime, 0.1); 
+
+            update(cappedDt); 
+            draw();           
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        init();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
