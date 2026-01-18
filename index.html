@@ -197,432 +197,182 @@
     </div>
 
     <script type="module">
-      // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+/* =========================
+   FIREBASE IMPORTS (CDN)
+   ========================= */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+/* =========================
+   FIREBASE CONFIG
+   ========================= */
 const firebaseConfig = {
   apiKey: "AIzaSyDKDeBzTa31pbpTtjRzBwwyflcUTpxhwqg",
   authDomain: "project-3695493212733207094.firebaseapp.com",
   projectId: "project-3695493212733207094",
   storageBucket: "project-3695493212733207094.firebasestorage.app",
   messagingSenderId: "220486711904",
-  appId: "1:220486711904:web:3a5bac5cbc5e969a162105",
-  measurementId: "G-BG8JY3DSJB"
+  appId: "1:220486711904:web:3a5bac5cbc5e969a162105"
 };
 
-// Initialize Firebase
+/* =========================
+   FIREBASE INIT
+   ========================= */
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = "github-pages";
 
-        let user = null;
-        const BANNED_WORDS = ['fuck', 'shit', 'ass', 'bitch'];
+let user = null;
 
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const uiLayer = document.getElementById('ui-layer');
-        const winModal = document.getElementById('win-modal');
-        const uiTitle = document.getElementById('ui-title');
-        const startBtn = document.getElementById('start-btn');
-        const menuBtn = document.getElementById('menu-btn');
-        const hud = document.getElementById('hud');
-        const timerVal = document.getElementById('timer-val');
-        const modeVal = document.getElementById('mode-val');
-        const lbEntriesEasy = document.getElementById('lb-entries-easy');
-        const lbEntriesHard = document.getElementById('lb-entries-hard');
+signInAnonymously(auth).catch(console.error);
 
-        const TILE_SIZE = 40; 
-        const FOG_RADIUS = 220;    
-        
-        let gameState = 'START'; 
-        let keys = {};
-        let gracePeriodTimer = 0;
-        let lastTime = 0; 
-        let isHardMode = false;
-        let startTime = 0, currentTime = 0;
-        let shakeIntensity = 0, flickerAlpha = 1;
+onAuthStateChanged(auth, (u) => {
+    user = u;
+    if (user) fetchLeaderboard();
+});
 
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let musicTimer = 0, nextPulseTime = 0;
+/* =========================
+   GAME VARIABLES
+   ========================= */
+const BANNED_WORDS = ['fuck', 'shit', 'ass', 'bitch'];
 
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
-            }
-        };
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-        onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (user) fetchLeaderboard();
+const uiLayer = document.getElementById('ui-layer');
+const winModal = document.getElementById('win-modal');
+const uiTitle = document.getElementById('ui-title');
+const startBtn = document.getElementById('start-btn');
+const menuBtn = document.getElementById('menu-btn');
+const hud = document.getElementById('hud');
+
+const timerVal = document.getElementById('timer-val');
+const modeVal = document.getElementById('mode-val');
+
+const lbEntriesEasy = document.getElementById('lb-entries-easy');
+const lbEntriesHard = document.getElementById('lb-entries-hard');
+
+const TILE_SIZE = 40;
+const FOG_RADIUS = 220;
+
+let gameState = 'START';
+let keys = {};
+let gracePeriodTimer = 0;
+let lastTime = 0;
+let isHardMode = false;
+let startTime = 0, currentTime = 0;
+let shakeIntensity = 0, flickerAlpha = 1;
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let musicTimer = 0, nextPulseTime = 0;
+
+/* =========================
+   LEADERBOARD
+   ========================= */
+async function fetchLeaderboard() {
+    if (!db || !user) return;
+
+    const lbRef = collection(db, 'leaderboard');
+
+    onSnapshot(lbRef, (snapshot) => {
+        const scores = [];
+        snapshot.forEach(doc => scores.push(doc.data()));
+
+        const easy = scores.filter(s => !s.hardMode)
+            .sort((a,b) => a.time - b.time)
+            .slice(0,5);
+
+        const hard = scores.filter(s => s.hardMode)
+            .sort((a,b) => a.time - b.time)
+            .slice(0,5);
+
+        lbEntriesEasy.innerHTML = easy.length
+            ? easy.map((s,i)=>`<div class="lb-row"><span>${i+1}. ${s.name}</span><span>${s.time.toFixed(2)}s</span></div>`).join('')
+            : '<div style="opacity:.5;text-align:center">Empty</div>';
+
+        lbEntriesHard.innerHTML = hard.length
+            ? hard.map((s,i)=>`<div class="lb-row"><span>${i+1}. ${s.name}</span><span>${s.time.toFixed(2)}s</span></div>`).join('')
+            : '<div style="opacity:.5;text-align:center">Empty</div>';
+    });
+}
+
+async function submitScore() {
+    let name = document.getElementById('player-name').value.trim() || "ANONYMOUS";
+    if (BANNED_WORDS.some(w => name.toLowerCase().includes(w))) name = "****";
+
+    try {
+        await addDoc(collection(db, 'leaderboard'), {
+            name,
+            time: currentTime,
+            hardMode: isHardMode,
+            timestamp: Date.now()
         });
+    } catch (e) {
+        console.error(e);
+    }
 
-        initAuth();
+    winModal.classList.add('hidden');
+    resetToMenu();
+}
 
-        async function fetchLeaderboard() {
-            if (!user) return;
-            const lbRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
-            onSnapshot(lbRef, (snapshot) => {
-                const scores = [];
-                snapshot.forEach(doc => scores.push(doc.data()));
-                
-                // Sort and filter Standard
-                const easyScores = scores.filter(s => !s.hardMode).sort((a,b) => a.time - b.time).slice(0, 5);
-                lbEntriesEasy.innerHTML = easyScores.length 
-                    ? easyScores.map((s, i) => `<div class="lb-row"><span>${i+1}. ${s.name}</span><span>${s.time.toFixed(2)}s</span></div>`).join('')
-                    : '<div style="opacity:0.5; text-align:center;">Empty</div>';
+/* =========================
+   INPUT
+   ========================= */
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
 
-                // Sort and filter Hard Mode
-                const hardScores = scores.filter(s => s.hardMode).sort((a,b) => a.time - b.time).slice(0, 5);
-                lbEntriesHard.innerHTML = hardScores.length 
-                    ? hardScores.map((s, i) => `<div class="lb-row"><span>${i+1}. ${s.name}</span><span>${s.time.toFixed(2)}s</span></div>`).join('')
-                    : '<div style="opacity:0.5; text-align:center;">Empty</div>';
-            }, (err) => console.error(err));
-        }
+/* =========================
+   GAME INIT
+   ========================= */
+function init() {
+    canvas.width = 800;
+    canvas.height = 600;
+    generateMaze();
+}
 
-        async function submitScore() {
-            let name = document.getElementById('player-name').value.trim();
-            if (!name) name = "ANONYMOUS";
-            const isInappropriate = BANNED_WORDS.some(word => name.toLowerCase().includes(word));
-            if (isInappropriate) name = "****";
-            
-            try {
-                const lbRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
-                await addDoc(lbRef, { 
-                    name, 
-                    time: currentTime, 
-                    hardMode: isHardMode, 
-                    timestamp: Date.now() 
-                });
-                winModal.classList.add('hidden');
-                resetToMenu();
-            } catch (e) { console.error(e); }
-        }
+/* =========================
+   START BUTTON
+   ========================= */
+startBtn.addEventListener('click', () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
 
-        function playTone(freq, type, duration, vol = 0.2) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = type;
-            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + duration);
-        }
+    uiLayer.classList.add('hidden');
+    hud.classList.remove('hidden');
 
-        function playThump(closeness, panValue) {
-            const bufferSize = audioCtx.sampleRate * 0.2;
-            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-            const noise = audioCtx.createBufferSource(); 
-            noise.buffer = buffer;
-            const filter = audioCtx.createBiquadFilter(); 
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(140 - (closeness * 90), audioCtx.currentTime);
-            const panner = audioCtx.createStereoPanner(); 
-            panner.pan.setValueAtTime(panValue, audioCtx.currentTime);
-            const gain = audioCtx.createGain(); 
-            gain.gain.setValueAtTime(1.1 + (closeness * 2.4), audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
-            noise.connect(filter); filter.connect(panner); panner.connect(gain); gain.connect(audioCtx.destination);
-            noise.start();
-        }
+    startTime = performance.now();
+    isHardMode = false;
 
-        const world = { width: 35, height: 35, walls: [], fakeWalls: [], exit: {x: 0, y: 0}, portal: {x: -1, y: -1}, secret: {x: 1, y: -2, collected: false}, outOfBoundsTiles: [] };
-        const player = { x: 0, y: 0, speed: 195, color: '#00f2ff', radius: 10, hasSecret: false };
-        const monster = { x: 0, y: 0, speed: 170, color: '#ff0055', radius: 12, path: [], lastTargetTile: {x: -1, y: -1} };
-        const camera = { x: 0, y: 0 };
+    generateMaze();
 
-        function init() {
-            canvas.width = 800; canvas.height = 600;
-            generateMaze();
-        }
+    player.x = TILE_SIZE * 3.5;
+    player.y = TILE_SIZE * 4.5;
+    monster.x = TILE_SIZE * 3.5;
+    monster.y = TILE_SIZE * 2.5;
 
-        function generateMaze() {
-            world.width = isHardMode ? 61 : 31;
-            world.height = isHardMode ? 61 : 31;
-            world.walls = []; world.fakeWalls = [];
-            
-            if (!isHardMode) { 
-                world.secret.collected = false; 
-                player.hasSecret = false; 
-                player.color = '#00f2ff'; 
-                modeVal.innerText = "STANDARD";
-                modeVal.style.color = "var(--neon-cyan)";
-            } else { 
-                player.color = '#ff00ff'; 
-                modeVal.innerText = "HARD MODE";
-                modeVal.style.color = "var(--neon-magenta)";
-            }
+    monster.path = [];
+    gracePeriodTimer = 3;
 
-            for (let y = 0; y < world.height; y++) world.walls[y] = new Array(world.width).fill(true);
-            
-            for (let y = 1; y < 6; y++) for (let x = 1; x < 6; x++) world.walls[y][x] = false;
+    gameState = 'PLAYING';
+    lastTime = performance.now();
+});
 
-            if (!isHardMode) {
-                world.outOfBoundsTiles = [{x: 1, y: -1, wall: false}, {x: 1, y: -2, wall: false, hasSecret: true}, {x: 0, y: -1, wall: true}, {x: 0, y: -2, wall: true}, {x: 2, y: -1, wall: true}, {x: 2, y: -2, wall: true}, {x: 1, y: -3, wall: true}];
-                world.walls[0][1] = true; world.fakeWalls = [{x: 1, y: 0}];
-            }
+/* =========================
+   GAME LOOP
+   ========================= */
+function loop(t) {
+    const dt = Math.min((t - lastTime) / 1000, 0.1);
+    update(dt);
+    draw();
+    lastTime = t;
+    requestAnimationFrame(loop);
+}
 
-            const stack = [{x: 5, y: 3}];
-            world.walls[3][5] = false;
-            
-            while (stack.length > 0) {
-                let idx = Math.random() < 0.3 ? Math.floor(Math.random() * stack.length) : stack.length - 1;
-                const curr = stack[idx];
-                const dirs = [{x:0, y:-2}, {x:0, y:2}, {x:-2, y:0}, {x:2, y:0}].sort(() => Math.random() - 0.5);
-                let found = false;
-                for (let d of dirs) {
-                    const nx = curr.x + d.x, ny = curr.y + d.y;
-                    if (nx > 0 && nx < world.width-1 && ny > 0 && ny < world.height-1 && world.walls[ny][nx]) {
-                        world.walls[curr.y + d.y/2][curr.x + d.x/2] = false; 
-                        world.walls[ny][nx] = false;
-                        stack.push({x: nx, y: ny}); found = true; break;
-                    }
-                }
-                if (!found) stack.splice(idx, 1);
-            }
-
-            for (let i = 0; i < (world.width * world.height) / 10; i++) {
-                const x = Math.floor(Math.random() * (world.width - 2)) + 1;
-                const y = Math.floor(Math.random() * (world.height - 2)) + 1;
-                if (world.walls[y][x]) {
-                    const horiz = !world.walls[y][x-1] && !world.walls[y][x+1];
-                    const vert = !world.walls[y-1][x] && !world.walls[y+1][x];
-                    if (horiz || vert) world.walls[y][x] = false;
-                }
-            }
-
-            let maxDist = -1;
-            let possibleExits = [];
-            for (let y = 1; y < world.height - 1; y++) {
-                for (let x = 1; x < world.width - 1; x++) {
-                    if (!world.walls[y][x]) {
-                        const d = Math.abs(x - 3) + Math.abs(y - 4);
-                        if (d > maxDist) maxDist = d;
-                        if (d > (isHardMode ? 35 : 15)) possibleExits.push({x, y});
-                    }
-                }
-            }
-            world.exit = possibleExits.length > 0 
-                ? possibleExits[Math.floor(Math.random() * possibleExits.length)] 
-                : {x: 15, y: 15};
-
-            if (!isHardMode) {
-                const possibleEdges = [];
-                for (let x = 1; x < world.width - 1; x++) { if (!world.walls[1][x]) possibleEdges.push({x, y: 0}); }
-                if (possibleEdges.length > 0) {
-                    const choice = possibleEdges[Math.floor(Math.random() * possibleEdges.length)];
-                    world.portal = {x: choice.x, y: choice.y}; world.walls[choice.y][choice.x] = true; 
-                }
-            }
-        }
-
-        function getPath(startX, startY, endX, endY) {
-            if (startY < 0 || endY < 0) return []; 
-            const queue = [[{x: startX, y: startY}]];
-            const visited = new Set([`${startX},${startY}`]);
-            while (queue.length > 0) {
-                const path = queue.shift(); const curr = path[path.length - 1];
-                if (curr.x === endX && curr.y === endY) return path;
-                for (let d of [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}]) {
-                    const nx = curr.x + d.x, ny = curr.y + d.y;
-                    if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height && !world.walls[ny][nx] && !visited.has(`${nx},${ny}`)) {
-                        visited.add(`${nx},${ny}`); queue.push([...path, {x: nx, y: ny}]);
-                    }
-                }
-            }
-            return [];
-        }
-
-        window.addEventListener('keydown', e => keys[e.code] = true);
-        window.addEventListener('keyup', e => keys[e.code] = false);
-
-        function triggerHardMode() {
-            isHardMode = true; shakeIntensity = 25; 
-            playTone(60, 'sawtooth', 0.8, 0.6);
-            uiTitle.innerHTML = "SYSTEM OVERLOAD<br>HARD MODE";
-            uiLayer.classList.remove('hidden');
-            gameState = 'TRANSITION'; monster.speed = 188; 
-        }
-
-        function resetToMenu() {
-            gameState = 'START';
-            isHardMode = false;
-            uiLayer.classList.remove('hidden');
-            hud.classList.add('hidden');
-            uiTitle.innerHTML = "LANDO'S BIZARRE MAZE";
-            generateMaze();
-            fetchLeaderboard();
-        }
-
-        menuBtn.addEventListener('click', resetToMenu);
-        startBtn.addEventListener('click', () => {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            uiLayer.classList.add('hidden'); hud.classList.remove('hidden');
-            if (gameState !== 'TRANSITION') { isHardMode = false; monster.speed = 170; startTime = performance.now(); }
-            generateMaze();
-            player.x = TILE_SIZE * 3.5; player.y = TILE_SIZE * 4.5;
-            monster.x = TILE_SIZE * 3.5; monster.y = TILE_SIZE * 2.5;
-            monster.path = []; gracePeriodTimer = 3.0; 
-            gameState = 'PLAYING'; lastTime = performance.now(); 
-        });
-
-        document.getElementById('submit-score').addEventListener('click', submitScore);
-        document.getElementById('skip-score').addEventListener('click', () => {
-            winModal.classList.add('hidden');
-            resetToMenu();
-        });
-
-        function checkCollision(nx, ny, radius, isMonster = false) {
-            for (let i = 0; i < 12; i++) {
-                const angle = (i / 12) * Math.PI * 2;
-                const px = nx + Math.cos(angle) * (radius - 1), py = ny + Math.sin(angle) * (radius - 1);
-                const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE);
-                
-                if (ty < 0) {
-                    if (isMonster) return true;
-                    if (!world.outOfBoundsTiles.find(t => t.x === tx && t.y === ty && !t.wall)) return true;
-                    continue;
-                }
-                if (tx < 0 || tx >= world.width || ty >= world.height || world.walls[ty][tx]) {
-                    if (!isMonster && world.fakeWalls.some(fw => fw.x === tx && fw.y === ty)) continue;
-                    if (!isMonster && player.hasSecret && tx === world.portal.x && ty === world.portal.y) continue;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function update(dt) {
-            if (shakeIntensity > 0) shakeIntensity *= 0.92;
-            flickerAlpha = 0.94 + Math.random() * 0.06;
-            if (gameState !== 'PLAYING') return;
-            currentTime = (performance.now() - startTime) / 1000;
-            timerVal.innerText = currentTime.toFixed(2);
-
-            let mx = 0, my = 0;
-            if (keys['ArrowUp'] || keys['KeyW']) my -= player.speed * dt;
-            if (keys['ArrowDown'] || keys['KeyS']) my += player.speed * dt;
-            if (keys['ArrowLeft'] || keys['KeyA']) mx -= player.speed * dt;
-            if (keys['ArrowRight'] || keys['KeyD']) mx += player.speed * dt;
-            if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
-
-            if (!checkCollision(player.x + mx, player.y, player.radius)) {
-                player.x += mx;
-            } else if (mx !== 0) {
-                if (!checkCollision(player.x + mx, player.y - 4, player.radius)) player.y -= 200 * dt;
-                else if (!checkCollision(player.x + mx, player.y + 4, player.radius)) player.y += 200 * dt;
-            }
-
-            if (!checkCollision(player.x, player.y + my, player.radius)) {
-                player.y += my;
-            } else if (my !== 0) {
-                if (!checkCollision(player.x - 4, player.y + my, player.radius)) player.x -= 200 * dt;
-                else if (!checkCollision(player.x + 4, player.y + my, player.radius)) player.x += 200 * dt;
-            }
-
-            const dx = monster.x - player.x, dy = monster.y - player.y, dist = Math.hypot(dx, dy);
-            if (dist < 300) {
-                musicTimer += dt;
-                if (musicTimer >= nextPulseTime) {
-                    playThump(1 - (dist / 300), dx / 300);
-                    musicTimer = 0; nextPulseTime = Math.max(0.05, 1.2 - (1 - dist/300) * 1.15);
-                }
-            }
-
-            if (gracePeriodTimer > 0) gracePeriodTimer -= dt;
-            else {
-                const tx = Math.floor(player.x / TILE_SIZE), ty = Math.floor(player.y / TILE_SIZE);
-                if (ty >= 0) {
-                    if (monster.path.length === 0 || monster.lastTargetTile.x !== tx || monster.lastTargetTile.y !== ty) {
-                        monster.path = getPath(Math.floor(monster.x/TILE_SIZE), Math.floor(monster.y/TILE_SIZE), tx, ty);
-                        monster.lastTargetTile = {x: tx, y: ty};
-                    }
-                    if (monster.path.length > 1) {
-                        const next = monster.path[1], targetX = (next.x + 0.5) * TILE_SIZE, targetY = (next.y + 0.5) * TILE_SIZE;
-                        const angle = Math.atan2(targetY - monster.y, targetX - monster.x);
-                        monster.x += Math.cos(angle) * monster.speed * dt; monster.y += Math.sin(angle) * monster.speed * dt;
-                        if (Math.hypot(targetX - monster.x, targetY - monster.y) < 5) monster.path.shift();
-                    }
-                }
-                if (dist < (player.radius + monster.radius - 2)) { 
-                    gameState = 'LOST'; shakeIntensity = 50; playTone(50, 'sawtooth', 1.0, 0.7);
-                    uiTitle.innerText = "FATAL ERROR"; uiLayer.classList.remove('hidden'); hud.classList.add('hidden');
-                }
-            }
-
-            const ctxX = Math.floor(player.x / TILE_SIZE), ctxY = Math.floor(player.y / TILE_SIZE);
-            if (!world.secret.collected && !isHardMode) {
-                const s = world.outOfBoundsTiles.find(t => t.hasSecret);
-                if (ctxX === s.x && ctxY === s.y) { 
-                    world.secret.collected = true; player.hasSecret = true; player.color = '#ff00ff'; 
-                    playTone(600, 'triangle', 0.1, 0.5); 
-                }
-            }
-            if (player.hasSecret && !isHardMode && Math.hypot(player.x - (world.portal.x+0.5)*TILE_SIZE, player.y - (world.portal.y+0.5)*TILE_SIZE) < TILE_SIZE*0.9) triggerHardMode();
-            if (ctxX === world.exit.x && ctxY === world.exit.y) {
-                gameState = 'WON';
-                document.getElementById('win-time-val').innerText = currentTime.toFixed(2);
-                document.getElementById('win-header').innerText = isHardMode ? "GODLIKE" : "VICTORY";
-                document.getElementById('win-header').style.color = isHardMode ? "var(--neon-magenta)" : "var(--neon-green)";
-                document.getElementById('win-subheader').innerText = isHardMode ? "MAZE MASTERED" : "ESCAPE COMPLETED";
-                winModal.classList.remove('hidden'); hud.classList.add('hidden');
-            }
-            camera.x = player.x - canvas.width / 2; camera.y = player.y - canvas.height / 2;
-        }
-
-        function draw() {
-            ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.save();
-            if (shakeIntensity > 0.1) ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
-            ctx.translate(-camera.x, -camera.y);
-            const wallBaseColor = isHardMode ? '#ff00ff' : '#39ff14';
-            for (let y = 0; y < world.height; y++) {
-                for (let x = 0; x < world.width; x++) {
-                    if (world.walls[y][x]) {
-                        const isPortal = player.hasSecret && !isHardMode && x === world.portal.x && y === world.portal.y;
-                        ctx.fillStyle = isPortal ? '#ff00ff' : wallBaseColor;
-                        if (world.fakeWalls.some(fw => fw.x === x && fw.y === y)) ctx.globalAlpha = 0.6; 
-                        ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-                        ctx.globalAlpha = 1;
-                    }
-                }
-            }
-            if (Math.floor(player.y/TILE_SIZE) < 0) {
-                world.outOfBoundsTiles.forEach(t => {
-                    if (t.wall) { ctx.fillStyle = wallBaseColor; ctx.fillRect(t.x * TILE_SIZE + 2, t.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4); }
-                    else if (t.hasSecret && !world.secret.collected) { ctx.fillStyle = '#fff'; ctx.font = '24px Arial'; ctx.fillText('📄', t.x * TILE_SIZE + 8, t.y * TILE_SIZE + 30); }
-                });
-            }
-            
-            const exitX = (world.exit.x + 0.5) * TILE_SIZE;
-            const exitY = (world.exit.y + 0.5) * TILE_SIZE;
-            const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
-            ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + pulse * 0.5})`;
-            ctx.beginPath(); ctx.arc(exitX, exitY, TILE_SIZE * 0.4, 0, Math.PI*2); ctx.fill();
-
-            ctx.fillStyle = monster.color; ctx.fillRect(monster.x - 12, monster.y - 12, 24, 24);
-            ctx.fillStyle = player.color; ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
-            ctx.restore();
-            
-            const cx = canvas.width / 2, cy = canvas.height / 2, rL = FOG_RADIUS * flickerAlpha;
-            ctx.globalCompositeOperation = 'destination-in';
-            const gL = ctx.createRadialGradient(cx, cy, rL * 0.1, cx, cy, rL);
-            gL.addColorStop(0, 'rgba(0,0,0,1)'); gL.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = gL; ctx.beginPath(); ctx.arc(cx, cy, rL, 0, Math.PI*2); ctx.fill();
-            ctx.globalCompositeOperation = 'source-over';
-        }
-
-        function loop(t) { update(Math.min((t - lastTime) / 1000, 0.1)); draw(); lastTime = t; requestAnimationFrame(loop); }
-        init(); requestAnimationFrame(loop);
-    </script>
+init();
+requestAnimationFrame(loop);
+</script>
 </body>
 </html>
+
 
