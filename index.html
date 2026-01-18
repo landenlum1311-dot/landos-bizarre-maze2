@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Landen's Bizarre Maze</title>
+    <title>Lando's Bizarre Maze</title>
     <style>
         /* Modern-Retro Atari Aesthetic */
         body {
@@ -28,7 +28,6 @@
             max-height: 90vh;
         }
 
-        /* Hard Mode visual flair */
         #game-container.hard-mode {
             border-color: #f0f;
             box-shadow: 0 0 30px rgba(255, 0, 255, 0.5);
@@ -56,8 +55,18 @@
             z-index: 10;
         }
 
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #0f0;
+            font-size: 1.2rem;
+            pointer-events: none;
+            text-shadow: 2px 2px #000;
+        }
+
         h1 {
-            font-size: 4rem;
+            font-size: 3.5rem;
             margin-bottom: 20px;
             text-shadow: 4px 4px #f00;
             text-align: center;
@@ -89,30 +98,44 @@
         .hidden {
             display: none !important;
         }
+
+        #stats-box {
+            margin-top: 15px;
+            text-align: center;
+            font-size: 1.2rem;
+        }
     </style>
 </head>
 <body>
 
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
+        <div id="hud" class="hidden">
+            TIME: <span id="timer-val">0.00</span>s<br>
+            BEST: <span id="best-val">--</span>s
+        </div>
         
         <div id="ui-layer">
-            <h1 id="ui-title">LANDEN'S BIZARRE MAZE</h1>
+            <h1 id="ui-title">LANDO'S BIZARRE MAZE</h1>
+            <div id="stats-box" class="hidden">
+                LAST TIME: <span id="last-time-val">0.00</span>s
+            </div>
             <button id="start-btn">START GAME</button>
         </div>
     </div>
 
     <script>
-        /**
-         * LANDEN'S BIZARRE MAZE
-         */
-
         const canvas = document.getElementById('gameCanvas');
         const container = document.getElementById('game-container');
         const ctx = canvas.getContext('2d');
         const uiLayer = document.getElementById('ui-layer');
         const uiTitle = document.getElementById('ui-title');
         const startBtn = document.getElementById('start-btn');
+        const hud = document.getElementById('hud');
+        const timerVal = document.getElementById('timer-val');
+        const bestValDisplay = document.getElementById('best-val');
+        const statsBox = document.getElementById('stats-box');
+        const lastTimeVal = document.getElementById('last-time-val');
 
         const TILE_SIZE = 40; 
         const VISIBLE_WIDTH = 20;  
@@ -124,37 +147,70 @@
         let gracePeriodTimer = 0;
         let lastTime = 0; 
         let isHardMode = false;
-        
+
+        let startTime = 0;
+        let currentTime = 0;
+        let bestTime = Infinity;
+
+        let shakeIntensity = 0;
+        let flickerAlpha = 1;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let musicTimer = 0;
+        let nextPulseTime = 0;
+
+        function playTone(freq, type, duration, vol = 0.25) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playThump(closeness, panValue) {
+            const bufferSize = audioCtx.sampleRate * 0.2;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            const freq = 120 - (closeness * 80);
+            filter.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            filter.Q.setValueAtTime(15, audioCtx.currentTime);
+
+            const panner = audioCtx.createStereoPanner();
+            panner.pan.setValueAtTime(panValue, audioCtx.currentTime);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.7 + (closeness * 1.5), audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+
+            noise.connect(filter);
+            filter.connect(panner);
+            panner.connect(gain);
+            gain.connect(audioCtx.destination);
+            noise.start();
+        }
+
         const world = {
-            width: 41,
-            height: 41, 
-            walls: [],
-            fakeWalls: [], 
-            exit: {x: 0, y: 0},
-            portal: {x: -1, y: -1}, // New: Calculated portal position
+            width: 41, height: 41, 
+            walls: [], fakeWalls: [], 
+            exit: {x: 0, y: 0}, portal: {x: -1, y: -1},
             secret: {x: 1, y: -2, collected: false},
             outOfBoundsTiles: [] 
         };
 
-        const player = {
-            x: 0,
-            y: 0,
-            speed: 192, 
-            color: '#00f', 
-            radius: 12,
-            hasSecret: false
-        };
-
-        const monster = {
-            x: 0,
-            y: 0,
-            speed: 168, 
-            color: '#f00',
-            radius: 12,
-            path: [],
-            lastTargetTile: {x: -1, y: -1}
-        };
-
+        const player = { x: 0, y: 0, speed: 192, color: '#00f', radius: 10, hasSecret: false };
+        const monster = { x: 0, y: 0, speed: 168, color: '#f00', radius: 12, path: [], lastTargetTile: {x: -1, y: -1} };
         const camera = { x: 0, y: 0 };
 
         function init() {
@@ -166,52 +222,39 @@
         function generateMaze() {
             world.width = isHardMode ? 81 : 41;
             world.height = isHardMode ? 81 : 41;
-            
             world.walls = [];
             world.fakeWalls = [];
             
-            if (!isHardMode) {
-                world.secret.collected = false;
-                player.hasSecret = false;
-                player.color = '#00f';
-            } else {
-                player.color = '#f0f';
+            if (!isHardMode) { 
+                world.secret.collected = false; 
+                player.hasSecret = false; 
+                player.color = '#00f'; 
+            } else { 
+                player.color = '#f0f'; 
             }
 
-            for (let y = 0; y < world.height; y++) {
-                world.walls[y] = new Array(world.width).fill(true);
-            }
-
-            for (let y = 1; y < 7; y++) {
-                for (let x = 1; x < 6; x++) {
-                    world.walls[y][x] = false;
-                }
-            }
+            for (let y = 0; y < world.height; y++) world.walls[y] = new Array(world.width).fill(true);
+            
+            // Starting room
+            for (let y = 1; y < 7; y++) for (let x = 1; x < 6; x++) world.walls[y][x] = false;
 
             if (!isHardMode) {
                 world.outOfBoundsTiles = [
-                    {x: 1, y: -1, wall: false},  
-                    {x: 1, y: -2, wall: false, hasSecret: true}, 
-                    {x: 0, y: -1, wall: true},
-                    {x: 0, y: -2, wall: true},
-                    {x: 2, y: -1, wall: true},
-                    {x: 2, y: -2, wall: true},
-                    {x: 1, y: -3, wall: true}
+                    {x: 1, y: -1, wall: false}, {x: 1, y: -2, wall: false, hasSecret: true}, 
+                    {x: 0, y: -1, wall: true}, {x: 0, y: -2, wall: true},
+                    {x: 2, y: -1, wall: true}, {x: 2, y: -2, wall: true}, {x: 1, y: -3, wall: true}
                 ];
                 world.walls[0][1] = true; 
-                world.fakeWalls.push({x: 1, y: 0});
-            } else {
-                world.outOfBoundsTiles = [];
+                world.fakeWalls = [{x: 1, y: 0}];
             }
 
+            // Recursive Backtracking
             const stack = [{x: 5, y: 3}];
             world.walls[3][5] = false;
-
             while (stack.length > 0) {
                 const curr = stack[stack.length - 1];
                 const dirs = [{x:0, y:-2}, {x:0, y:2}, {x:-2, y:0}, {x:2, y:0}].sort(() => Math.random() - 0.5);
                 let found = false;
-
                 for (let d of dirs) {
                     const nx = curr.x + d.x, ny = curr.y + d.y;
                     if (nx > 0 && nx < world.width-1 && ny > 0 && ny < world.height-1 && world.walls[ny][nx]) {
@@ -225,56 +268,39 @@
                 if (!found) stack.pop();
             }
 
-            const loopCount = isHardMode ? 400 : 150;
-            for (let i = 0; i < loopCount; i++) {
-                const rx = Math.floor(Math.random() * (world.width - 2)) + 1;
-                const ry = Math.floor(Math.random() * (world.height - 2)) + 1;
-                if (world.walls[ry][rx]) {
-                    const h = !world.walls[ry][rx-1] && !world.walls[ry][rx+1];
-                    const v = !world.walls[ry-1][rx] && !world.walls[ry+1][rx];
-                    if (h || v) world.walls[ry][rx] = false;
-                }
-            }
-
-            // Exit Placement
+            // Exit placement
             let exitFound = false;
-            const startX = 3, startY = 4;
-            const minDistance = isHardMode ? 100 : 30; 
-            let attempts = 0;
-            while (!exitFound && attempts < 1000) {
-                attempts++;
-                const ex = isHardMode 
-                    ? Math.floor(world.width * 0.7 + Math.random() * (world.width * 0.25))
-                    : Math.floor(Math.random() * (world.width - 2)) + 1;
-                const ey = isHardMode 
-                    ? Math.floor(world.height * 0.7 + Math.random() * (world.height * 0.25))
-                    : Math.floor(Math.random() * (world.height - 2)) + 1;
-                
-                if (ex < world.width && ey < world.height && !world.walls[ey][ex]) {
-                    if ((Math.abs(ex - startX) + Math.abs(ey - startY)) > minDistance) {
-                        world.exit = {x: ex, y: ey};
-                        exitFound = true;
-                    }
+            while (!exitFound) {
+                const ex = Math.floor(Math.random() * (world.width - 2)) + 1;
+                const ey = Math.floor(Math.random() * (world.height - 2)) + 1;
+                if (!world.walls[ey][ex] && (Math.abs(ex - 3) + Math.abs(ey - 4)) > (isHardMode ? 60 : 30)) {
+                    world.exit = {x: ex, y: ey};
+                    exitFound = true;
                 }
             }
 
-            // Portal Placement: Edge wall, far from spawn
+            // Improved Random Edge Portal placement
             if (!isHardMode) {
-                let edges = [];
-                for(let i=0; i<world.width; i++) {
-                    if(world.walls[0][i]) edges.push({x: i, y: 0});
-                    if(world.walls[world.height-1][i]) edges.push({x: i, y: world.height-1});
+                const edges = [];
+                // Check all edge wall tiles that are adjacent to at least one corridor
+                for (let x = 0; x < world.width; x++) {
+                    if (world.walls[1]?.[x] === false) edges.push({x: x, y: 0});
+                    if (world.walls[world.height - 2]?.[x] === false) edges.push({x: x, y: world.height - 1});
                 }
-                for(let i=0; i<world.height; i++) {
-                    if(world.walls[i][0]) edges.push({x: 0, y: i});
-                    if(world.walls[i][world.width-1]) edges.push({x: world.width-1, y: i});
+                for (let y = 0; y < world.height; y++) {
+                    if (world.walls[y]?.[1] === false) edges.push({x: 0, y: y});
+                    if (world.walls[y]?.[world.width - 2] === false) edges.push({x: world.width - 1, y: y});
                 }
-                // Filter for blocks far from spawn (startX=3, startY=4)
-                const farEdges = edges.filter(e => (Math.abs(e.x - startX) + Math.abs(e.y - startY)) > 25);
-                if (farEdges.length > 0) {
-                    world.portal = farEdges[Math.floor(Math.random() * farEdges.length)];
+
+                if (edges.length > 0) {
+                    const chosen = edges[Math.floor(Math.random() * edges.length)];
+                    world.portal = {x: chosen.x, y: chosen.y};
+                    // Ensure it is technically a wall to block normal movement, but we'll draw it special
+                    world.walls[chosen.y][chosen.x] = true;
                 } else {
-                    world.portal = {x: world.width - 1, y: world.height - 1};
+                    // Fallback to a guaranteed spot if no edge neighbors found
+                    world.portal = {x: 3, y: 0};
+                    world.walls[0][3] = true;
                 }
             }
         }
@@ -283,18 +309,14 @@
             if (startY < 0 || endY < 0) return []; 
             const queue = [[{x: startX, y: startY}]];
             const visited = new Set([`${startX},${startY}`]);
-            
             while (queue.length > 0) {
                 const path = queue.shift();
                 const curr = path[path.length - 1];
                 if (curr.x === endX && curr.y === endY) return path;
-
-                const dirs = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
-                for (let d of dirs) {
+                for (let d of [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}]) {
                     const nx = curr.x + d.x, ny = curr.y + d.y;
                     if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height && !world.walls[ny][nx] && !visited.has(`${nx},${ny}`)) {
-                        visited.add(`${nx},${ny}`);
-                        queue.push([...path, {x: nx, y: ny}]);
+                        visited.add(`${nx},${ny}`); queue.push([...path, {x: nx, y: ny}]);
                     }
                 }
             }
@@ -305,7 +327,8 @@
         window.addEventListener('keyup', e => keys[e.code] = false);
 
         function triggerHardMode() {
-            isHardMode = true;
+            isHardMode = true; shakeIntensity = 25; 
+            playTone(80, 'sawtooth', 0.8, 0.6);
             container.classList.add('hard-mode');
             uiTitle.innerHTML = "HARD MODE ACTIVATED";
             uiTitle.classList.add('hard-text');
@@ -316,218 +339,196 @@
         }
 
         startBtn.addEventListener('click', () => {
-            uiLayer.classList.add('hidden');
-            if (gameState === 'START' || gameState === 'LOST' || gameState === 'WON') {
-                isHardMode = false;
-                container.classList.remove('hard-mode');
-                uiTitle.classList.remove('hard-text');
-                uiTitle.innerText = "LANDEN'S BIZARRE MAZE";
-                monster.speed = 168;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            uiLayer.classList.add('hidden'); hud.classList.remove('hidden'); statsBox.classList.add('hidden');
+            if (gameState !== 'TRANSITION') {
+                isHardMode = false; container.classList.remove('hard-mode');
+                uiTitle.classList.remove('hard-text'); uiTitle.innerText = "LANDO'S BIZARRE MAZE";
+                monster.speed = 168; startTime = performance.now();
             }
-            
             generateMaze();
-            player.x = TILE_SIZE * 3.5;
-            player.y = TILE_SIZE * 4.5;
-            monster.x = TILE_SIZE * 3.5;
-            monster.y = TILE_SIZE * 2.5;
-            monster.path = [];
-            gracePeriodTimer = 3.0; 
-            gameState = 'PLAYING';
-            lastTime = performance.now(); 
+            player.x = TILE_SIZE * 3.5; player.y = TILE_SIZE * 4.5;
+            monster.x = TILE_SIZE * 3.5; monster.y = TILE_SIZE * 2.5;
+            monster.path = []; gracePeriodTimer = 3.0; 
+            gameState = 'PLAYING'; lastTime = performance.now(); 
+            playTone(440, 'sine', 0.1, 0.4);
         });
 
-        function checkCollision(nx, ny, radius, isMonster = false) {
-            const res = 12; 
-            const inset = 1; 
-            for (let i = 0; i < res; i++) {
-                const angle = (i / res) * Math.PI * 2;
-                const px = nx + Math.cos(angle) * (radius - inset);
-                const py = ny + Math.sin(angle) * (radius - inset);
+        function isHittingWall(nx, ny, radius, isMonster = false) {
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const px = nx + Math.cos(angle) * radius, py = ny + Math.sin(angle) * radius;
                 const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE);
-                
                 if (ty < 0) {
                     if (isMonster) return true;
                     const oob = world.outOfBoundsTiles.find(t => t.x === tx && t.y === ty);
-                    if (!oob || oob.wall) return true;
-                    continue;
+                    if (!oob || oob.wall) return true; continue;
                 }
-
                 if (tx < 0 || tx >= world.width || ty >= world.height) return true;
-                
                 if (world.walls[ty][tx]) {
-                    // Normal mode: check if it's the portal after collecting secret
-                    if (!isMonster && player.hasSecret && tx === world.portal.x && ty === world.portal.y) {
-                        return false; 
-                    }
+                    // Collision skip for fake walls (player only)
                     if (!isMonster && world.fakeWalls.some(fw => fw.x === tx && fw.y === ty)) continue;
+                    
+                    // Allow player to touch the portal block center to trigger it
+                    if (!isMonster && player.hasSecret && tx === world.portal.x && ty === world.portal.y) continue;
+                    
                     return true;
                 }
             }
             return false;
         }
 
-        function update(dt) {
+        function handleMusic(dt) {
             if (gameState !== 'PLAYING') return;
+            const dx = monster.x - player.x, dy = monster.y - player.y, dist = Math.hypot(dx, dy);
+            if (dist > 250) return;
+            const closeness = 1 - (dist / 250); 
+            musicTimer += dt;
+            if (musicTimer >= nextPulseTime) {
+                playThump(closeness, dx / 300);
+                musicTimer = 0; nextPulseTime = Math.max(0.05, 1.2 - closeness * 1.15);
+            }
+        }
 
-            let moveX = 0, moveY = 0;
-            if (keys['ArrowUp'] || keys['KeyW']) moveY -= player.speed * dt;
-            if (keys['ArrowDown'] || keys['KeyS']) moveY += player.speed * dt;
-            if (keys['ArrowLeft'] || keys['KeyA']) moveX -= player.speed * dt;
-            if (keys['ArrowRight'] || keys['KeyD']) moveX += player.speed * dt;
+        function update(dt) {
+            if (shakeIntensity > 0) shakeIntensity *= 0.9;
+            flickerAlpha = 0.96 + Math.random() * 0.04;
+            if (gameState !== 'PLAYING') return;
+            currentTime = (performance.now() - startTime) / 1000;
+            timerVal.innerText = currentTime.toFixed(2);
 
-            if (moveX !== 0 && moveY !== 0) {
-                moveX *= 0.7071;
-                moveY *= 0.7071;
+            let mx = 0, my = 0;
+            if (keys['ArrowUp'] || keys['KeyW']) my -= player.speed * dt;
+            if (keys['ArrowDown'] || keys['KeyS']) my += player.speed * dt;
+            if (keys['ArrowLeft'] || keys['KeyA']) mx -= player.speed * dt;
+            if (keys['ArrowRight'] || keys['KeyD']) mx += player.speed * dt;
+            if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
+
+            if (!isHittingWall(player.x + mx, player.y + my, player.radius)) { player.x += mx; player.y += my; }
+            else {
+                if (!isHittingWall(player.x + mx, player.y, player.radius)) player.x += mx;
+                if (!isHittingWall(player.x, player.y + my, player.radius)) player.y += my;
             }
 
-            if (!checkCollision(player.x + moveX, player.y + moveY, player.radius)) {
-                player.x += moveX;
-                player.y += moveY;
-            } else {
-                if (!checkCollision(player.x + moveX, player.y, player.radius)) player.x += moveX;
-                if (!checkCollision(player.x, player.y + moveY, player.radius)) player.y += moveY;
-            }
-
-            if (gracePeriodTimer > 0) {
-                gracePeriodTimer -= dt;
-            } else {
-                const pTileX = Math.floor(player.x / TILE_SIZE);
-                const pTileY = Math.floor(player.y / TILE_SIZE);
-                const mTileX = Math.floor(monster.x / TILE_SIZE);
-                const mTileY = Math.floor(monster.y / TILE_SIZE);
-
-                if (pTileY >= 0) {
-                    if (monster.path.length === 0 || monster.lastTargetTile.x !== pTileX || monster.lastTargetTile.y !== pTileY) {
-                        monster.path = getPath(mTileX, mTileY, pTileX, pTileY);
-                        monster.lastTargetTile = {x: pTileX, y: pTileY};
+            handleMusic(dt);
+            if (gracePeriodTimer > 0) gracePeriodTimer -= dt;
+            else {
+                const tx = Math.floor(player.x / TILE_SIZE), ty = Math.floor(player.y / TILE_SIZE);
+                if (ty >= 0) {
+                    if (monster.path.length === 0 || monster.lastTargetTile.x !== tx || monster.lastTargetTile.y !== ty) {
+                        monster.path = getPath(Math.floor(monster.x/TILE_SIZE), Math.floor(monster.y/TILE_SIZE), tx, ty);
+                        monster.lastTargetTile = {x: tx, y: ty};
                     }
-
                     if (monster.path.length > 1) {
-                        const next = monster.path[1];
-                        const targetX = (next.x + 0.5) * TILE_SIZE;
-                        const targetY = (next.y + 0.5) * TILE_SIZE;
+                        const next = monster.path[1], targetX = (next.x + 0.5) * TILE_SIZE, targetY = (next.y + 0.5) * TILE_SIZE;
                         const angle = Math.atan2(targetY - monster.y, targetX - monster.x);
-                        
-                        monster.x += Math.cos(angle) * monster.speed * dt;
-                        monster.y += Math.sin(angle) * monster.speed * dt;
-                        
+                        monster.x += Math.cos(angle) * monster.speed * dt; monster.y += Math.sin(angle) * monster.speed * dt;
                         if (Math.hypot(targetX - monster.x, targetY - monster.y) < 5) monster.path.shift();
                     }
                 }
-
-                if (Math.hypot(monster.x - player.x, monster.y - player.y) < 22) {
-                    gameState = 'LOST';
-                    uiTitle.innerText = "YOU WERE CAUGHT!";
-                    uiTitle.classList.remove('hard-text');
-                    startBtn.innerText = "TRY AGAIN";
-                    uiLayer.classList.remove('hidden');
+                const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
+                if (dist < 85) shakeIntensity = Math.max(shakeIntensity, (85 - dist) / 8);
+                if (dist < 24) { 
+                    gameState = 'LOST'; shakeIntensity = 40; playTone(60, 'sawtooth', 1.0, 0.7);
+                    uiTitle.innerText = "YOU WERE CAUGHT!"; startBtn.innerText = "TRY AGAIN";
+                    uiLayer.classList.remove('hidden'); hud.classList.add('hidden');
                 }
             }
 
-            const tx = Math.floor(player.x / TILE_SIZE);
-            const ty = Math.floor(player.y / TILE_SIZE);
-            
+            const ctxX = Math.floor(player.x / TILE_SIZE);
+            const ctxY = Math.floor(player.y / TILE_SIZE);
+
+            // Secret Collection Logic
             if (!world.secret.collected && !isHardMode) {
-                const secretTile = world.outOfBoundsTiles.find(t => t.hasSecret);
-                if (tx === secretTile.x && ty === secretTile.y) {
-                    world.secret.collected = true;
-                    player.hasSecret = true;
+                const s = world.outOfBoundsTiles.find(t => t.hasSecret);
+                if (ctxX === s.x && ctxY === s.y) { 
+                    world.secret.collected = true; 
+                    player.hasSecret = true; 
                     player.color = '#f0f'; 
+                    playTone(600, 'triangle', 0.1, 0.5); 
                 }
             }
 
-            // Hard Mode Portal Logic
-            if (player.hasSecret && !isHardMode && tx === world.portal.x && ty === world.portal.y) {
-                triggerHardMode();
+            // Expanded Portal Trigger Logic
+            if (player.hasSecret && !isHardMode) {
+                const portalCenterX = (world.portal.x + 0.5) * TILE_SIZE;
+                const portalCenterY = (world.portal.y + 0.5) * TILE_SIZE;
+                const distToPortal = Math.hypot(player.x - portalCenterX, player.y - portalCenterY);
+                // Trigger if player is within the portal tile
+                if (distToPortal < TILE_SIZE * 0.9) {
+                    triggerHardMode();
+                }
             }
 
-            if (tx === world.exit.x && ty === world.exit.y) {
-                gameState = 'WON';
-                uiTitle.innerText = isHardMode ? "GOD TIER ESCAPE!" : (player.hasSecret ? "YOU ESCAPED!\n(A+ CERTIFIED)" : "YOU ESCAPED!");
-                uiTitle.classList.remove('hard-text');
-                startBtn.innerText = "PLAY AGAIN";
-                uiLayer.classList.remove('hidden');
+            // Exit Check
+            if (ctxX === world.exit.x && ctxY === world.exit.y) {
+                gameState = 'WON'; if (currentTime < bestTime) { bestTime = currentTime; bestValDisplay.innerText = bestTime.toFixed(2); }
+                lastTimeVal.innerText = currentTime.toFixed(2); statsBox.classList.remove('hidden');
+                uiTitle.innerText = "YOU ESCAPED!"; startBtn.innerText = "PLAY AGAIN";
+                uiLayer.classList.remove('hidden'); hud.classList.add('hidden');
             }
-
-            camera.x = player.x - canvas.width / 2;
-            camera.y = player.y - canvas.height / 2;
+            camera.x = player.x - canvas.width / 2; camera.y = player.y - canvas.height / 2;
         }
 
         function draw() {
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const pTileY = Math.floor(player.y / TILE_SIZE);
-            const isInsideSecretCorridor = pTileY < 0;
-
+            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.save();
+            if (shakeIntensity > 0.1) ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
             ctx.translate(-camera.x, -camera.y);
-
-            // Walls
+            
+            // Draw walls
             for (let y = 0; y < world.height; y++) {
                 for (let x = 0; x < world.width; x++) {
                     if (world.walls[y][x]) {
-                        let wallColor = isHardMode ? '#f0f' : '#00ff00';
+                        let c = isHardMode ? '#f0f' : '#0f0';
                         
-                        // Override color for entrance or portal
-                        const isEntrance = world.fakeWalls.some(fw => fw.x === x && fw.y === y);
-                        if (isEntrance) wallColor = '#00cc00';
-                        if (player.hasSecret && !isHardMode && x === world.portal.x && y === world.portal.y) {
-                             wallColor = '#f0f';
+                        // Fake wall styling
+                        if (world.fakeWalls.some(fw => fw.x === x && fw.y === y)) {
+                           c = isHardMode ? '#cc00cc' : '#00cc00'; 
                         }
 
-                        ctx.fillStyle = wallColor;
+                        // Portal block styling (Only visible after getting secret)
+                        if (player.hasSecret && !isHardMode && x === world.portal.x && y === world.portal.y) {
+                            c = '#f0f'; 
+                        }
+
+                        ctx.fillStyle = c; 
                         ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
                     }
                 }
             }
 
-            if (isInsideSecretCorridor) {
+            // Draw Out of Bounds area
+            if (Math.floor(player.y/TILE_SIZE) < 0) {
                 world.outOfBoundsTiles.forEach(t => {
-                    if (t.wall) {
-                        ctx.fillStyle = '#00ff00';
-                        ctx.fillRect(t.x * TILE_SIZE + 2, t.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-                    } else if (t.hasSecret && !world.secret.collected) {
-                        ctx.fillStyle = '#fff';
-                        ctx.font = '24px Arial';
-                        ctx.fillText('📄', t.x * TILE_SIZE + 8, t.y * TILE_SIZE + 30);
-                    }
+                    if (t.wall) { ctx.fillStyle = '#0f0'; ctx.fillRect(t.x * TILE_SIZE + 2, t.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4); }
+                    else if (t.hasSecret && !world.secret.collected) { ctx.fillStyle = '#fff'; ctx.font = '24px Arial'; ctx.fillText('📄', t.x * TILE_SIZE + 8, t.y * TILE_SIZE + 30); }
                 });
             }
 
-            // Exit
-            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? '#fff' : (isHardMode ? '#f0f' : '#0f0');
+            // Blinking Exit
+            const blinkFactor = (Math.sin(Date.now() / 150) + 1) / 2; 
+            ctx.fillStyle = `rgb(${Math.floor(255 * blinkFactor)}, 255, ${Math.floor(255 * blinkFactor)})`;
             ctx.fillRect(world.exit.x * TILE_SIZE + 5, world.exit.y * TILE_SIZE + 5, TILE_SIZE - 10, TILE_SIZE - 10);
 
-            // Entities
-            ctx.fillStyle = monster.color;
-            ctx.fillRect(monster.x - 12, monster.y - 12, 24, 24);
-            ctx.fillStyle = player.color;
-            ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
-
+            // Draw Entities
+            ctx.fillStyle = monster.color; ctx.fillRect(monster.x - 12, monster.y - 12, 24, 24);
+            ctx.fillStyle = player.color; ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
+            
             ctx.restore();
 
+            // Lighting Effect
             const cx = canvas.width / 2, cy = canvas.height / 2;
             ctx.globalCompositeOperation = 'destination-in';
-            const grad = ctx.createRadialGradient(cx, cy, FOG_RADIUS * 0.2, cx, cy, FOG_RADIUS);
-            grad.addColorStop(0, 'rgba(0,0,0,1)');
-            grad.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = grad;
-            ctx.beginPath(); ctx.arc(cx, cy, FOG_RADIUS, 0, Math.PI*2); ctx.fill();
+            const rL = FOG_RADIUS * flickerAlpha;
+            const gL = ctx.createRadialGradient(cx, cy, rL * 0.2, cx, cy, rL);
+            gL.addColorStop(0, 'rgba(0,0,0,1)'); gL.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gL; ctx.beginPath(); ctx.arc(cx, cy, rL, 0, Math.PI*2); ctx.fill();
             ctx.globalCompositeOperation = 'source-over';
         }
 
-        function gameLoop(time) {
-            const deltaTime = (time - lastTime) / 1000; 
-            lastTime = time;
-            const cappedDt = Math.min(deltaTime, 0.1); 
-            update(cappedDt); 
-            draw();           
-            requestAnimationFrame(gameLoop);
-        }
-
-        init();
-        requestAnimationFrame(gameLoop);
+        function loop(t) { update(Math.min((t - lastTime) / 1000, 0.1)); draw(); lastTime = t; requestAnimationFrame(loop); }
+        init(); requestAnimationFrame(loop);
     </script>
 </body>
 </html>
