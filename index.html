@@ -1,303 +1,536 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lando's Bizarre Maze - Cyberpunk Edition</title>
-<style>
-    :root {
-        --neon-cyan: #00f2ff;
-        --neon-magenta: #ff00ff;
-        --neon-green: #39ff14;
-        --dark-bg: #050505;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lando's Bizarre Maze - Cyberpunk Edition</title>
+    <style>
+        :root {
+            --neon-cyan: #00f2ff;
+            --neon-magenta: #ff00ff;
+            --neon-green: #39ff14;
+            --dark-bg: #050505;
+        }
 
-    body {
-        margin: 0;
-        padding: 0;
-        background-color: #000;
-        color: var(--neon-cyan);
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        overflow: hidden;
-    }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: var(--neon-cyan);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
 
-    /* CRT Screen Simulation Container */
-    #screen {
-        position: relative;
-        width: 800px;
-        height: 600px;
-        overflow: hidden;
-        border: 4px solid #333;
-        border-radius: 15px;
-        box-shadow: 0 0 50px rgba(0, 0, 0, 0.8), inset 0 0 100px rgba(0,0,0,0.5);
-        background: #000;
-    }
+        /* CRT Screen Simulation Container */
+        #screen {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            overflow: hidden;
+            border: 4px solid #333;
+            border-radius: 15px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.8), inset 0 0 100px rgba(0,0,0,0.5);
+            background: #000;
+        }
 
-    /* Scanline Overlay */
-    #screen::after {
-        content: " ";
-        display: block;
-        position: absolute;
-        top: 0; left: 0; bottom: 0; right: 0;
-        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
-                    linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
-        z-index: 5;
-        background-size: 100% 3px, 2px 100%;
-        pointer-events: none;
-    }
+        /* Scanline Overlay */
+        #screen::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            z-index: 5;
+            background-size: 100% 3px, 2px 100%;
+            pointer-events: none;
+        }
 
-    /* Vignette and Curvature */
-    #screen::before {
-        content: " ";
-        display: block;
-        position: absolute;
-        top: 0; left: 0; bottom: 0; right: 0;
-        background: radial-gradient(circle, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%);
-        z-index: 6;
-        pointer-events: none;
-    }
+        /* Vignette and Curvature */
+        #screen::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: radial-gradient(circle, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%);
+            z-index: 6;
+            pointer-events: none;
+        }
 
-    canvas {
-        display: block;
-        image-rendering: auto; 
-        background-color: var(--dark-bg);
-    }
+        canvas {
+            display: block;
+            image-rendering: auto; 
+            background-color: var(--dark-bg);
+        }
 
-    #ui-layer {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.85);
-        z-index: 10;
-        backdrop-filter: blur(8px);
-    }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 10;
+            backdrop-filter: blur(8px);
+        }
 
-    #hud {
-        position: absolute;
-        top: 20px;
-        left: 20px;
-        z-index: 8;
-        pointer-events: none;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        font-size: 0.9rem;
-        text-shadow: 0 0 10px var(--neon-cyan);
-    }
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 8;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 0.9rem;
+            text-shadow: 0 0 10px var(--neon-cyan);
+        }
 
-    h1 {
-        font-size: 2.5rem;
-        margin-bottom: 30px;
-        text-align: center;
-        letter-spacing: 5px;
-        color: #fff;
-        text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
-    }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 30px;
+            text-align: center;
+            letter-spacing: 5px;
+            color: #fff;
+            text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+        }
 
-    .hard-text {
-        color: #fff !important;
-        text-shadow: 0 0 10px var(--neon-magenta), 0 0 30px var(--neon-magenta) !important;
-        animation: pulse 1.5s infinite alternate;
-    }
+        .hard-text {
+            color: #fff !important;
+            text-shadow: 0 0 10px var(--neon-magenta), 0 0 30px var(--neon-magenta) !important;
+            animation: pulse 1.5s infinite alternate;
+        }
 
-    @keyframes pulse {
-        from { transform: scale(1); }
-        to { transform: scale(1.05); }
-    }
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.05); }
+        }
 
-    button {
-        background: transparent;
-        color: #fff;
-        border: 1px solid #fff;
-        padding: 15px 40px;
-        font-size: 1.2rem;
-        font-family: inherit;
-        font-weight: 300;
-        cursor: pointer;
-        transition: all 0.3s;
-        box-shadow: 0 0 15px rgba(255,255,255,0.2);
-        text-transform: uppercase;
-        letter-spacing: 4px;
-    }
+        button {
+            background: transparent;
+            color: #fff;
+            border: 1px solid #fff;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: inherit;
+            font-weight: 300;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+        }
 
-    button:hover {
-        background: #fff;
-        color: #000;
-        box-shadow: 0 0 30px #fff;
-    }
+        button:hover {
+            background: #fff;
+            color: #000;
+            box-shadow: 0 0 30px #fff;
+        }
 
-    .hidden { display: none !important; }
+        .hidden { display: none !important; }
 
-    .stat-label { font-size: 0.7rem; opacity: 0.6; margin-bottom: 2px; }
-    .stat-value { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: block;}
-
-    /* LEADERBOARD STYLES */
-    #leaderboard { margin-top: 20px; text-align: center; }
-    #leaderboard h2 { letter-spacing: 4px; margin-bottom: 10px; }
-    .lb-entry { font-size: 0.9rem; opacity: 0.9; margin:2px 0; }
-    input { background:#000; color:#0ff; border:1px solid #0ff; padding:8px; margin-bottom:10px; text-align:center; }
-</style>
+        .stat-label { font-size: 0.7rem; opacity: 0.6; margin-bottom: 2px; }
+        .stat-value { font-size: 1.2rem; font-weight: bold; margin-bottom: 10px; display: block;}
+    </style>
 </head>
 <body>
 
-<div id="screen">
-    <canvas id="gameCanvas"></canvas>
-    
-    <div id="hud" class="hidden">
-        <div class="stat-label">TIME ELAPSED</div>
-        <span id="timer-val" class="stat-value">0.00</span>
-        <div class="stat-label">RECORD</div>
-        <span id="best-val" class="stat-value">--</span>
-    </div>
-    
-    <div id="ui-layer">
-        <h1 id="ui-title">LANDO'S<br>BIZARRE MAZE</h1>
+    <div id="screen">
+        <canvas id="gameCanvas"></canvas>
         
-        <div id="stats-box" class="hidden" style="text-align:center;">
-            <div class="stat-label">LAST RUN</div>
-            <span id="last-time-val" class="stat-value">0.00</span>
+        <div id="hud" class="hidden">
+            <div class="stat-label">TIME ELAPSED</div>
+            <span id="timer-val" class="stat-value">0.00</span>
+            <div class="stat-label">RECORD</div>
+            <span id="best-val" class="stat-value">--</span>
         </div>
-
-        <!-- PLAYER NAME INPUT FOR LEADERBOARD -->
-        <div id="name-entry" class="hidden">
-            <input id="playerName" maxlength="16" placeholder="ENTER NAME">
-            <button id="submitScore">UPLOAD SCORE</button>
-        </div>
-
-        <!-- LEADERBOARD DISPLAY -->
-        <div id="leaderboard">
-            <h2 id="lb-title">NORMAL MODE</h2>
-            <div id="scores"></div>
-        </div>
-
-        <button id="start-btn">INITIALIZE</button>
-    </div>
-</div>
-
-<!-- GAME + FIREBASE SCRIPT -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, serverTimestamp } 
-    from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-
-/* ================= FIREBASE ================= */
-const firebaseConfig = {
-  apiKey: "AIzaSyDKDeBzTa31pbpTtjRzBwwyflcUTpxhwqg",
-  authDomain: "project-3695493212733207094.firebaseapp.com",
-  projectId: "project-3695493212733207094",
-  storageBucket: "project-3695493212733207094.firebasestorage.app",
-  messagingSenderId: "220486711904",
-  appId: "1:220486711904:web:3a5bac5cbc5e969a162105",
-  measurementId: "G-BG8JY3DSJB"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-/* ================= SLUR FILTER ================= */
-const bannedWords = [
-  "fuck","shit","bitch","asshole","nigger","faggot","cunt","rape","hitler"
-];
-function cleanName(name) {
-  let out = (name || "ANON").trim();
-  bannedWords.forEach(w => {
-    out = out.replace(new RegExp(w, "gi"), "*".repeat(w.length));
-  });
-  return out.slice(0, 16);
-}
-
-/* ================= LEADERBOARD LOGIC ================= */
-let lastWinTime = 0;
-let lastWinMode = "normal";
-
-function getLeaderboardCollection() {
-  return isHardMode ? "leaderboard_hard" : "leaderboard_normal";
-}
-
-async function submitScore(name, time) {
-  const collectionName = getLeaderboardCollection();
-  await addDoc(collection(db, collectionName), { name, time, created: serverTimestamp() });
-  loadLeaderboard();
-}
-
-async function loadLeaderboard() {
-  const collectionName = getLeaderboardCollection();
-  const q = query(collection(db, collectionName), orderBy("time"), limit(10));
-  const snap = await getDocs(q);
-  const scores = document.getElementById("scores");
-  scores.innerHTML = "";
-  let rank = 1;
-  snap.forEach(doc => {
-    const d = doc.data();
-    scores.innerHTML += `<div class="lb-entry">#${rank++} ${d.name} — ${d.time.toFixed(2)}s</div>`;
-  });
-  document.getElementById("lb-title").innerText = isHardMode ? "HARD MODE" : "NORMAL MODE";
-}
-
-function onGameWin(time) {
-  lastWinTime = time;
-  lastWinMode = isHardMode ? "hard" : "normal";
-  document.getElementById("name-entry").classList.remove("hidden");
-}
-
-/* SUBMIT BUTTON */
-document.getElementById("submitScore").onclick = () => {
-  const input = document.getElementById("playerName");
-  const name = cleanName(input.value);
-  submitScore(name, lastWinTime);
-  input.value = "";
-  document.getElementById("name-entry").classList.add("hidden");
-};
-
-/* ================= GAME CODE ================= */
-/* ...Your entire existing game code continues unchanged below this line... */
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const uiLayer = document.getElementById('ui-layer');
-const uiTitle = document.getElementById('ui-title');
-const startBtn = document.getElementById('start-btn');
-const hud = document.getElementById('hud');
-const timerVal = document.getElementById('timer-val');
-const bestValDisplay = document.getElementById('best-val');
-const statsBox = document.getElementById('stats-box');
-const lastTimeVal = document.getElementById('last-time-val');
-
-const TILE_SIZE = 40; 
-const VISIBLE_WIDTH = 20;  
-const VISIBLE_HEIGHT = 15; 
-const FOG_RADIUS = 220;    
         
-let gameState = 'START'; 
-let keys = {};
-let gracePeriodTimer = 0;
-let lastTime = 0; 
-let isHardMode = false;
-let startTime = 0, currentTime = 0, bestTime = Infinity;
-let shakeIntensity = 0, flickerAlpha = 1;
+        <div id="ui-layer">
+            <h1 id="ui-title">LANDO'S<br>BIZARRE MAZE</h1>
+            <div id="stats-box" class="hidden" style="text-align:center;">
+                <div class="stat-label">LAST RUN</div>
+                <span id="last-time-val" class="stat-value">0.00</span>
+            </div>
+            <button id="start-btn">INITIALIZE</button>
+        </div>
+    </div>
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-let musicTimer = 0, nextPulseTime = 0;
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const uiLayer = document.getElementById('ui-layer');
+        const uiTitle = document.getElementById('ui-title');
+        const startBtn = document.getElementById('start-btn');
+        const hud = document.getElementById('hud');
+        const timerVal = document.getElementById('timer-val');
+        const bestValDisplay = document.getElementById('best-val');
+        const statsBox = document.getElementById('stats-box');
+        const lastTimeVal = document.getElementById('last-time-val');
 
-/* ----- INSERT ALL YOUR GAME FUNCTIONS HERE (unchanged) ----- */
+        const TILE_SIZE = 40; 
+        const VISIBLE_WIDTH = 20;  
+        const VISIBLE_HEIGHT = 15; 
+        const FOG_RADIUS = 220;    
+        
+        let gameState = 'START'; 
+        let keys = {};
+        let gracePeriodTimer = 0;
+        let lastTime = 0; 
+        let isHardMode = false;
+        let startTime = 0, currentTime = 0, bestTime = Infinity;
+        let shakeIntensity = 0, flickerAlpha = 1;
 
-/* ADD THIS LINE INSIDE YOUR WIN CONDITION */
-if (ctxX === world.exit.x && ctxY === world.exit.y) {
-    onGameWin(currentTime); // <-- leaderboard hook
-}
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let musicTimer = 0, nextPulseTime = 0;
 
-/* INITIAL LEADERBOARD LOAD */
-loadLeaderboard();
-</script>
+        function playTone(freq, type, duration, vol = 0.2) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
 
+        function playThump(closeness, panValue) {
+            const bufferSize = audioCtx.sampleRate * 0.2;
+            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            
+            const noise = audioCtx.createBufferSource(); 
+            noise.buffer = buffer;
+            
+            const filter = audioCtx.createBiquadFilter(); 
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(140 - (closeness * 90), audioCtx.currentTime);
+            
+            const panner = audioCtx.createStereoPanner(); 
+            panner.pan.setValueAtTime(panValue, audioCtx.currentTime);
+            
+            const gain = audioCtx.createGain(); 
+            const volumeBoost = 1.1 + (closeness * 2.4);
+            gain.gain.setValueAtTime(volumeBoost, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+            
+            noise.connect(filter); filter.connect(panner); panner.connect(gain); gain.connect(audioCtx.destination);
+            noise.start();
+        }
+
+        const world = { width: 41, height: 41, walls: [], fakeWalls: [], exit: {x: 0, y: 0}, portal: {x: -1, y: -1}, secret: {x: 1, y: -2, collected: false}, outOfBoundsTiles: [] };
+        const player = { x: 0, y: 0, speed: 195, color: '#00f2ff', radius: 10, hasSecret: false };
+        const monster = { x: 0, y: 0, speed: 170, color: '#ff0055', radius: 12, path: [], lastTargetTile: {x: -1, y: -1} };
+        const camera = { x: 0, y: 0 };
+
+        function init() {
+            canvas.width = 800;
+            canvas.height = 600;
+            generateMaze();
+        }
+
+        function generateMaze() {
+            world.width = isHardMode ? 81 : 41;
+            world.height = isHardMode ? 81 : 41;
+            world.walls = []; world.fakeWalls = [];
+            
+            if (!isHardMode) { world.secret.collected = false; player.hasSecret = false; player.color = '#00f2ff'; }
+            else { player.color = '#ff00ff'; }
+
+            for (let y = 0; y < world.height; y++) world.walls[y] = new Array(world.width).fill(true);
+            
+            // Starting Room Area
+            for (let y = 1; y < 7; y++) for (let x = 1; x < 6; x++) world.walls[y][x] = false;
+
+            if (!isHardMode) {
+                world.outOfBoundsTiles = [
+                    {x: 1, y: -1, wall: false}, {x: 1, y: -2, wall: false, hasSecret: true}, 
+                    {x: 0, y: -1, wall: true}, {x: 0, y: -2, wall: true},
+                    {x: 2, y: -1, wall: true}, {x: 2, y: -2, wall: true}, {x: 1, y: -3, wall: true}
+                ];
+                // Entry to secret corridor
+                world.walls[0][1] = true; world.fakeWalls = [{x: 1, y: 0}];
+            }
+
+            const stack = [{x: 5, y: 3}];
+            world.walls[3][5] = false;
+            while (stack.length > 0) {
+                const curr = stack[stack.length - 1];
+                const dirs = [{x:0, y:-2}, {x:0, y:2}, {x:-2, y:0}, {x:2, y:0}].sort(() => Math.random() - 0.5);
+                let found = false;
+                for (let d of dirs) {
+                    const nx = curr.x + d.x, ny = curr.y + d.y;
+                    if (nx > 0 && nx < world.width-1 && ny > 0 && ny < world.height-1 && world.walls[ny][nx]) {
+                        world.walls[curr.y + d.y/2][curr.x + d.x/2] = false; world.walls[ny][nx] = false;
+                        stack.push({x: nx, y: ny}); found = true; break;
+                    }
+                }
+                if (!found) stack.pop();
+            }
+
+            // Find valid Exit
+            let exitFound = false;
+            while (!exitFound) {
+                const ex = Math.floor(Math.random() * (world.width - 2)) + 1;
+                const ey = Math.floor(Math.random() * (world.height - 2)) + 1;
+                if (!world.walls[ey][ex] && (Math.abs(ex - 3) + Math.abs(ey - 4)) > (isHardMode ? 60 : 30)) {
+                    world.exit = {x: ex, y: ey}; exitFound = true;
+                }
+            }
+
+            // Find valid Portal location on the edge of the maze
+            if (!isHardMode) {
+                const possibleEdges = [];
+                // Check outer walls and ensure they are adjacent to a corridor
+                for (let x = 1; x < world.width - 1; x++) {
+                    if (world.walls[1][x] === false) possibleEdges.push({x, y: 0});
+                    if (world.walls[world.height - 2][x] === false) possibleEdges.push({x, y: world.height - 1});
+                }
+                for (let y = 1; y < world.height - 1; y++) {
+                    if (world.walls[y][1] === false) possibleEdges.push({x: 0, y});
+                    if (world.walls[y][world.width - 2] === false) possibleEdges.push({x: world.width - 1, y});
+                }
+                
+                if (possibleEdges.length > 0) {
+                    const choice = possibleEdges[Math.floor(Math.random() * possibleEdges.length)];
+                    world.portal = {x: choice.x, y: choice.y};
+                    world.walls[choice.y][choice.x] = true; 
+                } else {
+                    world.portal = {x: 3, y: 0}; world.walls[0][3] = true;
+                }
+            }
+        }
+
+        function getPath(startX, startY, endX, endY) {
+            if (startY < 0 || endY < 0) return []; 
+            const queue = [[{x: startX, y: startY}]];
+            const visited = new Set([`${startX},${startY}`]);
+            while (queue.length > 0) {
+                const path = queue.shift(); const curr = path[path.length - 1];
+                if (curr.x === endX && curr.y === endY) return path;
+                for (let d of [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}]) {
+                    const nx = curr.x + d.x, ny = curr.y + d.y;
+                    if (nx >= 0 && nx < world.width && ny >= 0 && ny < world.height && !world.walls[ny][nx] && !visited.has(`${nx},${ny}`)) {
+                        visited.add(`${nx},${ny}`); queue.push([...path, {x: nx, y: ny}]);
+                    }
+                }
+            }
+            return [];
+        }
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        function triggerHardMode() {
+            isHardMode = true; shakeIntensity = 25; 
+            playTone(60, 'sawtooth', 0.8, 0.6);
+            uiTitle.innerHTML = "SYSTEM OVERLOAD<br>HARD MODE";
+            uiTitle.classList.add('hard-text');
+            uiLayer.classList.remove('hidden');
+            startBtn.innerText = "OVERRIDE";
+            gameState = 'TRANSITION';
+            monster.speed = 188; 
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            uiLayer.classList.add('hidden'); hud.classList.remove('hidden'); statsBox.classList.add('hidden');
+            if (gameState !== 'TRANSITION') {
+                isHardMode = false; uiTitle.classList.remove('hard-text');
+                uiTitle.innerHTML = "LANDO'S<br>BIZARRE MAZE"; monster.speed = 170; startTime = performance.now();
+            }
+            generateMaze();
+            player.x = TILE_SIZE * 3.5; player.y = TILE_SIZE * 4.5;
+            monster.x = TILE_SIZE * 3.5; monster.y = TILE_SIZE * 2.5;
+            monster.path = []; gracePeriodTimer = 3.0; 
+            gameState = 'PLAYING'; lastTime = performance.now(); 
+            playTone(440, 'sine', 0.1, 0.4);
+        });
+
+        function isHittingWall(nx, ny, radius, isMonster = false) {
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const px = nx + Math.cos(angle) * radius, py = ny + Math.sin(angle) * radius;
+                const tx = Math.floor(px / TILE_SIZE), ty = Math.floor(py / TILE_SIZE);
+                if (ty < 0) {
+                    if (isMonster) return true;
+                    const oob = world.outOfBoundsTiles.find(t => t.x === tx && t.y === ty);
+                    if (!oob || oob.wall) return true; continue;
+                }
+                if (tx < 0 || tx >= world.width || ty >= world.height) return true;
+                if (world.walls[ty][tx]) {
+                    if (!isMonster && world.fakeWalls.some(fw => fw.x === tx && fw.y === ty)) continue;
+                    if (!isMonster && player.hasSecret && tx === world.portal.x && ty === world.portal.y) continue;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function handleMusic(dt) {
+            if (gameState !== 'PLAYING') return;
+            const dx = monster.x - player.x, dy = monster.y - player.y, dist = Math.hypot(dx, dy);
+            if (dist > 300) return;
+            const closeness = 1 - (dist / 300); 
+            musicTimer += dt;
+            if (musicTimer >= nextPulseTime) {
+                playThump(closeness, dx / 300);
+                musicTimer = 0; 
+                nextPulseTime = Math.max(0.05, 1.2 - closeness * 1.15);
+            }
+        }
+
+        function update(dt) {
+            if (shakeIntensity > 0) shakeIntensity *= 0.92;
+            flickerAlpha = 0.94 + Math.random() * 0.06;
+            if (gameState !== 'PLAYING') return;
+            currentTime = (performance.now() - startTime) / 1000;
+            timerVal.innerText = currentTime.toFixed(2);
+
+            let mx = 0, my = 0;
+            if (keys['ArrowUp'] || keys['KeyW']) my -= player.speed * dt;
+            if (keys['ArrowDown'] || keys['KeyS']) my += player.speed * dt;
+            if (keys['ArrowLeft'] || keys['KeyA']) mx -= player.speed * dt;
+            if (keys['ArrowRight'] || keys['KeyD']) mx += player.speed * dt;
+            if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
+
+            if (!isHittingWall(player.x + mx, player.y + my, player.radius)) { player.x += mx; player.y += my; }
+            else {
+                if (!isHittingWall(player.x + mx, player.y, player.radius)) player.x += mx;
+                if (!isHittingWall(player.x, player.y + my, player.radius)) player.y += my;
+            }
+
+            handleMusic(dt);
+            if (gracePeriodTimer > 0) gracePeriodTimer -= dt;
+            else {
+                const tx = Math.floor(player.x / TILE_SIZE), ty = Math.floor(player.y / TILE_SIZE);
+                if (ty >= 0) {
+                    if (monster.path.length === 0 || monster.lastTargetTile.x !== tx || monster.lastTargetTile.y !== ty) {
+                        monster.path = getPath(Math.floor(monster.x/TILE_SIZE), Math.floor(monster.y/TILE_SIZE), tx, ty);
+                        monster.lastTargetTile = {x: tx, y: ty};
+                    }
+                    if (monster.path.length > 1) {
+                        const next = monster.path[1], targetX = (next.x + 0.5) * TILE_SIZE, targetY = (next.y + 0.5) * TILE_SIZE;
+                        const angle = Math.atan2(targetY - monster.y, targetX - monster.x);
+                        monster.x += Math.cos(angle) * monster.speed * dt; monster.y += Math.sin(angle) * monster.speed * dt;
+                        if (Math.hypot(targetX - monster.x, targetY - monster.y) < 5) monster.path.shift();
+                    }
+                }
+                const dist = Math.hypot(monster.x - player.x, monster.y - player.y);
+                if (dist < 85) shakeIntensity = Math.max(shakeIntensity, (85 - dist) / 6);
+                if (dist < 22) { 
+                    gameState = 'LOST'; shakeIntensity = 50; playTone(50, 'sawtooth', 1.0, 0.7);
+                    uiTitle.innerText = "FATAL ERROR"; startBtn.innerText = "REBOOT";
+                    uiLayer.classList.remove('hidden'); hud.classList.add('hidden');
+                }
+            }
+
+            const ctxX = Math.floor(player.x / TILE_SIZE), ctxY = Math.floor(player.y / TILE_SIZE);
+            if (!world.secret.collected && !isHardMode) {
+                const s = world.outOfBoundsTiles.find(t => t.hasSecret);
+                if (ctxX === s.x && ctxY === s.y) { 
+                    world.secret.collected = true; player.hasSecret = true; player.color = '#ff00ff'; 
+                    playTone(600, 'triangle', 0.1, 0.5); 
+                }
+            }
+            if (player.hasSecret && !isHardMode && Math.hypot(player.x - (world.portal.x+0.5)*TILE_SIZE, player.y - (world.portal.y+0.5)*TILE_SIZE) < TILE_SIZE*0.9) triggerHardMode();
+
+            if (ctxX === world.exit.x && ctxY === world.exit.y) {
+                gameState = 'WON'; if (currentTime < bestTime) { bestTime = currentTime; bestValDisplay.innerText = bestTime.toFixed(2); }
+                lastTimeVal.innerText = currentTime.toFixed(2); statsBox.classList.remove('hidden');
+                uiTitle.innerText = "ZONE CLEARED"; startBtn.innerText = "RE-SYNC";
+                uiLayer.classList.remove('hidden'); hud.classList.add('hidden');
+            }
+            camera.x = player.x - canvas.width / 2; camera.y = player.y - canvas.height / 2;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            if (shakeIntensity > 0.1) ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
+            ctx.translate(-camera.x, -camera.y);
+            
+            const wallBaseColor = isHardMode ? '#ff00ff' : '#39ff14';
+            const wallGlowColor = isHardMode ? 'rgba(255,0,255,0.4)' : 'rgba(57,255,20,0.4)';
+
+            for (let y = 0; y < world.height; y++) {
+                for (let x = 0; x < world.width; x++) {
+                    if (world.walls[y][x]) {
+                        const isPortal = player.hasSecret && !isHardMode && x === world.portal.x && y === world.portal.y;
+                        
+                        ctx.shadowBlur = isPortal ? 20 : 10; 
+                        ctx.shadowColor = isPortal ? '#ff00ff' : wallGlowColor;
+                        ctx.fillStyle = isPortal ? '#ff00ff' : wallBaseColor;
+                        
+                        if (world.fakeWalls.some(fw => fw.x === x && fw.y === y)) ctx.globalAlpha = 0.6; 
+                        
+                        // Pulsing effect for Portal
+                        if (isPortal) {
+                            const p = (Math.sin(Date.now() / 150) + 1) / 2;
+                            ctx.globalAlpha = 0.7 + p * 0.3;
+                        }
+
+                        ctx.fillRect(x * TILE_SIZE + 4, y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                        
+                        // Emoji overlay for portal visibility
+                        if (isPortal) {
+                            ctx.shadowBlur = 0;
+                            ctx.fillStyle = "#fff";
+                            ctx.font = "20px Arial";
+                            ctx.textAlign = "center";
+                            ctx.fillText("🌀", x * TILE_SIZE + TILE_SIZE/2, y * TILE_SIZE + TILE_SIZE/2 + 7);
+                        }
+
+                        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+                    }
+                }
+            }
+
+            if (Math.floor(player.y/TILE_SIZE) < 0) {
+                world.outOfBoundsTiles.forEach(t => {
+                    if (t.wall) { ctx.fillStyle = wallBaseColor; ctx.fillRect(t.x * TILE_SIZE + 4, t.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8); }
+                    else if (t.hasSecret && !world.secret.collected) { ctx.fillStyle = '#fff'; ctx.font = '24px Arial'; ctx.fillText('📄', t.x * TILE_SIZE + 8, t.y * TILE_SIZE + 30); }
+                });
+            }
+
+            const b = (Math.sin(Date.now() / 200) + 1) / 2; 
+            ctx.shadowBlur = 20 * b; ctx.shadowColor = '#fff';
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.4 + b/2})`;
+            ctx.fillRect(world.exit.x * TILE_SIZE + 8, world.exit.y * TILE_SIZE + 8, TILE_SIZE - 16, TILE_SIZE - 16);
+            ctx.shadowBlur = 0;
+
+            // Monster
+            ctx.fillStyle = monster.color; ctx.shadowBlur = 15; ctx.shadowColor = 'red';
+            ctx.fillRect(monster.x - 12, monster.y - 12, 24, 24);
+
+            // Player
+            ctx.fillStyle = player.color; ctx.shadowColor = player.color; ctx.shadowBlur = 15;
+            ctx.fillRect(player.x - 10, player.y - 10, 20, 20);
+            ctx.restore();
+
+            // Lighting/Fog Mask
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+            ctx.globalCompositeOperation = 'destination-in';
+            const rL = FOG_RADIUS * flickerAlpha;
+            const gL = ctx.createRadialGradient(cx, cy, rL * 0.1, cx, cy, rL);
+            gL.addColorStop(0, 'rgba(0,0,0,1)'); gL.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = gL; ctx.beginPath(); ctx.arc(cx, cy, rL, 0, Math.PI*2); ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        function loop(t) { update(Math.min((t - lastTime) / 1000, 0.1)); draw(); lastTime = t; requestAnimationFrame(loop); }
+        init(); requestAnimationFrame(loop);
+    </script>
 </body>
 </html>
+
