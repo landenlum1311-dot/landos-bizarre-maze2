@@ -23,13 +23,17 @@
         #game-container {
             position: relative;
             border: 4px solid #0f0;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+            max-width: 95vw;
+            max-height: 90vh;
         }
 
         canvas {
             display: block;
-            image-rendering: pixelated; /* Keeps the retro blocky look */
+            image-rendering: pixelated; 
             background-color: #000;
+            max-width: 100%;
+            max-height: 100%;
         }
 
         #ui-layer {
@@ -47,7 +51,7 @@
         }
 
         h1 {
-            font-size: 3rem;
+            font-size: 4rem;
             margin-bottom: 20px;
             text-shadow: 4px 4px #f00;
             text-align: center;
@@ -58,8 +62,8 @@
             background: #0f0;
             color: #000;
             border: none;
-            padding: 15px 30px;
-            font-size: 1.5rem;
+            padding: 20px 40px;
+            font-size: 2rem;
             font-family: inherit;
             font-weight: bold;
             cursor: pointer;
@@ -90,7 +94,7 @@
     <script>
         /**
          * LANDEN'S BIZARRE MAZE
-         * A procedurally generated retro horror-survival game.
+         * A frame-rate independent retro maze game.
          */
 
         const canvas = document.getElementById('gameCanvas');
@@ -99,18 +103,17 @@
         const uiTitle = document.getElementById('ui-title');
         const startBtn = document.getElementById('start-btn');
 
-        // Game Constants
+        // --- SCALE ADJUSTMENTS ---
         const TILE_SIZE = 40; 
-        const VISIBLE_WIDTH = 12; 
-        const VISIBLE_HEIGHT = 9; 
-        const FOG_RADIUS = 120; 
+        const VISIBLE_WIDTH = 20;  // Increased from 12
+        const VISIBLE_HEIGHT = 15; // Increased from 9
+        const FOG_RADIUS = 200;    // Increased from 120 to match larger screen
         
         let gameState = 'START'; 
         let keys = {};
         let gracePeriodTimer = 0;
-        let lastTime = 0; // For DeltaTime tracking
+        let lastTime = 0; 
         
-        // World Definition
         const world = {
             width: 41,
             height: 41, 
@@ -124,7 +127,7 @@
         const player = {
             x: 0,
             y: 0,
-            speed: 192, // Pixels per second (Approx 3.2 * 60)
+            speed: 192, 
             color: '#00f', 
             radius: 10,
             hasSecret: false
@@ -133,7 +136,7 @@
         const monster = {
             x: 0,
             y: 0,
-            speed: 168, // Pixels per second (Approx 2.8 * 60)
+            speed: 168, 
             color: '#f00',
             radius: 12,
             path: [],
@@ -202,7 +205,7 @@
                 if (!found) stack.pop();
             }
 
-            for (let i = 0; i < 100; i++) {
+            for (let i = 0; i < 150; i++) {
                 const rx = Math.floor(Math.random() * (world.width - 2)) + 1;
                 const ry = Math.floor(Math.random() * (world.height - 2)) + 1;
                 if (world.walls[ry][rx]) {
@@ -214,7 +217,7 @@
 
             let exitFound = false;
             const startX = 3, startY = 4;
-            const minDistance = 25; 
+            const minDistance = 30; 
 
             while (!exitFound) {
                 const ex = Math.floor(Math.random() * (world.width - 2)) + 1;
@@ -260,9 +263,9 @@
             monster.x = TILE_SIZE * 3.5;
             monster.y = TILE_SIZE * 2.5;
             monster.path = [];
-            gracePeriodTimer = 3.0; // 3 seconds
+            gracePeriodTimer = 3.0; 
             gameState = 'PLAYING';
-            lastTime = performance.now(); // Reset timer on start
+            lastTime = performance.now(); 
         });
 
         function checkCollision(nx, ny, radius, isMonster = false) {
@@ -293,14 +296,12 @@
         function update(dt) {
             if (gameState !== 'PLAYING') return;
 
-            // Player Movement using DeltaTime
             let pdx = 0, pdy = 0;
             if (keys['ArrowUp'] || keys['KeyW']) pdy -= player.speed * dt;
             if (keys['ArrowDown'] || keys['KeyS']) pdy += player.speed * dt;
             if (keys['ArrowLeft'] || keys['KeyA']) pdx -= player.speed * dt;
             if (keys['ArrowRight'] || keys['KeyD']) pdx += player.speed * dt;
 
-            // Diagonal speed normalization
             if (pdx !== 0 && pdy !== 0) {
                 pdx *= 0.7071;
                 pdy *= 0.7071;
@@ -309,7 +310,6 @@
             if (!checkCollision(player.x + pdx, player.y, player.radius)) player.x += pdx;
             if (!checkCollision(player.x, player.y + pdy, player.radius)) player.y += pdy;
 
-            // Monster Logic using DeltaTime
             if (gracePeriodTimer > 0) {
                 gracePeriodTimer -= dt;
             } else {
@@ -421,17 +421,12 @@
             ctx.globalCompositeOperation = 'source-over';
         }
 
-        // Implementation of the suggested deltaTime loop
         function gameLoop(time) {
             const deltaTime = (time - lastTime) / 1000; 
             lastTime = time;
-
-            // Cap deltaTime to avoid huge jumps if user switches tabs
             const cappedDt = Math.min(deltaTime, 0.1); 
-
             update(cappedDt); 
             draw();           
-
             requestAnimationFrame(gameLoop);
         }
 
